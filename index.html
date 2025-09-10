@@ -1,1 +1,302 @@
-map under construction.
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>WW2 karte</title>
+  <link href="https://api.mapbox.com/mapbox-gl-js/v2.15.0/mapbox-gl.css" rel="stylesheet" />
+  <style>
+   
+    html,body{height:100%;margin:0;font-family:Inter, Roboto, system-ui, -apple-system, 'Segoe UI', Arial}
+    #map{position:fixed;inset:0}
+
+   
+    #map .mapboxgl-canvas-container{
+      filter: sepia(0.35) contrast(1.05) brightness(0.95) grayscale(0.05);
+    }
+
+    
+    .panel{
+      position:absolute;left:12px;top:12px;z-index:2;padding:10px 12px;background:rgba(18,15,10,0.75);color:#efe6d8;border-radius:8px;backdrop-filter: blur(4px);box-shadow:0 6px 18px rgba(0,0,0,0.45);
+      max-width:320px;font-size:13px;line-height:1.3
+    }
+	
+	#sidebar {
+  position: absolute;
+  top: 0px;
+  left: 0;
+  width: 220px;
+  height: 99vh;
+  background: rgba(24, 20, 15, 0.92);
+  color: #efe6d8;
+  padding: 15px;
+  font-size:14px;
+  overflow-y: auto;
+  box-shadow: 2px 0 12px rgba(0,0,0,0.6);
+  z-index: 3;
+  scrollbar-width: thin; 
+  scrollbar-color: #888 #f0f0f0;
+  opacity: 0.8;
+}
+#sidebar h2 {
+  margin-top: 0;
+  font-size: 18px;
+  border-bottom: 1px solid rgba(239,230,216,0.2);
+  padding-bottom: 8px;
+}
+#sidebar ul {
+  list-style: none;
+  padding: 0;
+  margin: 12px 0 0;
+}
+#sidebar li {
+  margin: 8px 0;
+  padding: 6px 8px;
+  background: rgba(255,255,255,0.05);
+  border-radius: 4px;
+}
+
+    .panel h1{margin:0 0 6px;font-size:16px}
+    .panel p{margin:6px 0}
+    .legend{margin-top:8px;font-size:13px}
+    .legend .item{display:flex;gap:8px;align-items:center;margin:4px 0}
+    .pin{width:18px;height:18px;border-radius:50%;display:inline-block}
+    .pin.war{background:#6b3e1a}
+    .pin.route{width:36px;height:4px;background:#6b8b3c;border-radius:2px}
+
+    
+    .mapboxgl-popup-content{
+      background: linear-gradient(180deg,#f6efd9 0%, #efe0b8 100%);
+      border-radius:6px;padding:10px 12px;color:#1b1510;font-weight:600;box-shadow:0 8px 20px rgba(0,0,0,0.35);
+      border:1px solid rgba(0,0,0,0.12)
+    }
+    .mapboxgl-popup-tip{color:#efe0b8}
+
+    
+  .marker-label {
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1.2;
+  color: #222; /* darker text */
+  background: rgba(255, 255, 255, 0.4); 
+  padding: 2px 6px;
+  border-radius: 4px;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.3);
+}
+
+
+
+#sidebar::-webkit-scrollbar {
+  width: 8px;  
+}
+
+#sidebar::-webkit-scrollbar-track {
+  background: #f0f0f0;  
+  border-radius: 4px;
+}
+
+#sidebar::-webkit-scrollbar-thumb {
+  background-color: #888; 
+  border-radius: 4px;
+  border: 2px solid #f0f0f0; 
+}
+
+#sidebar::-webkit-scrollbar-thumb:hover {
+  background-color: #555; 
+}
+
+    
+    @media (max-width:640px){
+	
+	.panel{max-width:86vw;font-size:12px}
+	
+		#sidebar {
+			display:none;
+		}
+	}
+  </style>
+</head>
+<body>
+  <div id="map"></div>
+<div id="sidebar">
+  <h2>Veranstaltungen</h2>
+  <ul id="sidebar-list"></ul>
+</div>
+
+ 
+
+  <script src="https://api.mapbox.com/mapbox-gl-js/v2.15.0/mapbox-gl.js"></script>
+  <script>
+    // === CONFIG ===
+   mapboxgl.accessToken = 'pk.eyJ1IjoiZGV5YW5iIiwiYSI6ImNtNjhicGlmdDAwMGUya3NibTdtcmhsZ24ifQ.vXXwP2_UBpL-9x8loc7-qg';
+						
+   // Initialize map
+const map = new mapboxgl.Map({
+  container: 'map',
+  style: 'mapbox://styles/mapbox/light-v10',
+  center: [7.0, 50.0],
+  zoom: 4.2,
+  pitch: 15
+});
+map.on('load', () => {
+
+  // Fetch and parse CSV
+  fetch('data.csv')
+    .then(response => response.text())
+    .then(csvText => {
+
+      function parseCSVLine(line) {
+        const regex = /(".*?"|[^",\s]+)(?=\s*,|\s*$)/g;
+        const matches = [];
+        let match;
+        while ((match = regex.exec(line)) !== null) {
+          let value = match[0];
+          if (value.startsWith('"') && value.endsWith('"')) value = value.slice(1, -1);
+          matches.push(value);
+        }
+        return matches;
+      }
+
+      const lines = csvText.trim().split('\n');
+      const markers = [];
+
+      lines.forEach((line, i) => {
+        if (i < 1) return; // skip 2 header rows
+        const cols = parseCSVLine(line);
+
+        if (!cols[3]) return; // coordinates column
+        const coords = cols[3].split(',').map(Number);
+        if (coords.length !== 2 || coords.some(isNaN)) return;
+
+        const lat = coords[0];
+        const lng = coords[1];
+
+        markers.push({
+          coords: [lng, lat],
+          title: cols[2], // Location
+          description: cols.map((c, j) => j === 3 ? '' : `<strong>${lines[0].split(',')[j]}:</strong> ${c}<br>`).join('')
+        });
+      });
+
+      // Generate curved route points
+      const curvedCoordinates = [];
+      for (let i = 0; i < markers.length - 1; i++) {
+        const start = markers[i].coords;
+        const end = markers[i + 1].coords;
+        const segmentPoints = getArcPoints(start, end, 50, 0.05);
+        if (i > 0) segmentPoints.shift(); // avoid duplicate point
+        curvedCoordinates.push(...segmentPoints);
+      }
+
+      // Create route
+      const route = {
+        type: 'Feature',
+        properties: { name: 'Kampagne Route' },
+        geometry: { type: 'LineString', coordinates: curvedCoordinates }
+      };
+
+      map.addSource('campaign-route', { type: 'geojson', data: route });
+
+      map.addLayer({
+        id: 'campaign-line-base',
+        type: 'line',
+        source: 'campaign-route',
+        layout: { 'line-join': 'round', 'line-cap': 'round' },
+        paint: { 'line-color': '#6b8b3c', 'line-width': 6, 'line-opacity': 0.9 }
+      });
+
+      map.addLayer({
+        id: 'campaign-line-dash',
+        type: 'line',
+        source: 'campaign-route',
+        layout: { 'line-join': 'round', 'line-cap': 'round' },
+        paint: { 'line-color': '#e6d6a7', 'line-width': 2, 'line-dasharray': [2, 6], 'line-opacity': 0.9 }
+      });
+
+      // Add markers and labels
+      markers.forEach((m, i) => {
+        const el = document.createElement('div');
+        el.className = 'marker';
+        el.style.width = '18px';
+        el.style.height = '18px';
+        el.style.borderRadius = '50%';
+        el.style.background = '#6b3e1a';
+        el.style.boxShadow = '0 2px 6px rgba(0,0,0,0.45)';
+        el.style.border = '2px solid rgba(239,230,216,0.12)';
+        el.style.cursor = 'pointer';
+
+        const label = document.createElement('div');
+        label.className = 'marker-label';
+        label.style.position = 'absolute';
+        label.style.transform = 'translate(-50%, -180%)';
+        label.innerText = (i + 1) + '. ' + m.title;
+        label.style.marginBottom = '6px';
+
+        const popup = new mapboxgl.Popup({ offset: 12, closeButton: false })
+          .setHTML(m.description);
+
+        new mapboxgl.Marker(el).setLngLat(m.coords).setPopup(popup).addTo(map);
+        new mapboxgl.Marker({ element: label, anchor: 'bottom', offset: [0, -15] }).setLngLat(m.coords).addTo(map);
+      });
+
+     
+      if (markers.length > 0) {
+        const bounds = markers.reduce((b, m) => b.extend(m.coords),
+          new mapboxgl.LngLatBounds(markers[0].coords, markers[0].coords)
+        );
+        map.fitBounds(bounds, { padding: 80 });
+      }
+
+      // Controls
+      map.addControl(new mapboxgl.NavigationControl({ visualizePitch: true }), 'top-right');
+      map.addControl(new mapboxgl.FullscreenControl(), 'top-right');
+
+      // **Sidebar**
+      const sidebarList = document.getElementById('sidebar-list');
+      markers.forEach((m, i) => {
+        const li = document.createElement('li');
+       li.innerHTML = `${lines[i + 2].split(',')[0] || ''} - ${lines[i + 2].split(',')[1] || ''} - ${lines[i + 2].split(',')[2] || ''}`;
+
+        li.style.cursor = 'pointer';
+        li.addEventListener('click', () => {
+          map.flyTo({ center: m.coords, zoom: 8 });
+          new mapboxgl.Popup({ offset: 12, closeOnClick: true })
+            .setLngLat(m.coords)
+            .setHTML(m.description)
+            .addTo(map);
+        });
+        sidebarList.appendChild(li);
+      });
+
+    })
+    .catch(err => console.error('CSV konnte nicht geladen werden:', err));
+
+});
+
+// Smooth arc function
+function getArcPoints(start, end, segments = 50, curvature = 0.2) {
+    const [lng1, lat1] = start;
+    const [lng2, lat2] = end;
+
+    const dx = lng2 - lng1;
+    const dy = lat2 - lat1;
+
+    const offsetX = -dy * curvature;
+    const offsetY = dx * curvature;
+
+    const points = [];
+    for (let i = 0; i <= segments; i++) {
+        const t = i / segments;
+        const x = lng1 + dx * t;
+        const y = lat1 + dy * t;
+        const curveFactor = Math.sin(Math.PI * t);
+        points.push([x + offsetX * curveFactor, y + offsetY * curveFactor]);
+    }
+    return points;
+}
+
+
+
+  </script>
+</body>
+</html>
