@@ -141,21 +141,39 @@ const map = new mapboxgl.Map({
 map.on('load', () => {
 
   // Fetch and parse CSV
-  fetch('data.csv')
+ // fetch('data.csv?id=2')
+  fetch('https://docs.google.com/spreadsheets/d/e/2PACX-1vRa8W3RuGjinOOdfA6_u-1sIJvIEQAeJmSrQ1ZuxZhB7dBmrvsxkQxTIHSSoK21QDBl9UpWJHX_1NrF/pub?gid=1861435437&single=true&output=csv')
     .then(response => response.text())
     .then(csvText => {
 
-      function parseCSVLine(line) {
-        const regex = /(".*?"|[^",\s]+)(?=\s*,|\s*$)/g;
-        const matches = [];
-        let match;
-        while ((match = regex.exec(line)) !== null) {
-          let value = match[0];
-          if (value.startsWith('"') && value.endsWith('"')) value = value.slice(1, -1);
-          matches.push(value);
-        }
-        return matches;
+    function parseCSVLine(line) {
+  const result = [];
+  let field = '';
+  let inQuotes = false;
+
+  for (let i = 0; i < line.length; i++) {
+    const char = line[i];
+
+    if (char === '"') {
+      // If next char is also a quote -> escaped quote
+      if (inQuotes && line[i + 1] === '"') {
+        field += '"';
+        i++; // skip the escaped quote
+      } else {
+        inQuotes = !inQuotes; // toggle state
       }
+    } else if (char === ',' && !inQuotes) {
+      result.push(field);
+      field = '';
+    } else {
+      field += char;
+    }
+  }
+  result.push(field); // push last field
+  return result.map(f => f.trim());
+}
+
+
 
       const lines = csvText.trim().split('\n');
       const markers = [];
@@ -170,12 +188,16 @@ map.on('load', () => {
 
         const lat = coords[0];
         const lng = coords[1];
+		//console.log(cols[3]);
 
         markers.push({
-          coords: [lng, lat],
-          title: cols[2], // Location
-          description: cols.map((c, j) => j === 3 ? '' : `<strong>${lines[0].split(',')[j]}:</strong> ${c}<br>`).join('')
-        });
+		  coords: [lng, lat],
+		  title: cols[2],          // Location
+		  yearStart: cols[0],      // first column
+		  yearEnd: cols[1],        // second column
+		  description: cols.map((c, j) => j === 3 ? '' : `<strong>${lines[0].split(',')[j]}:</strong> ${c}<br>`).join('')
+		});
+
       });
 
       // Generate curved route points
@@ -212,6 +234,7 @@ map.on('load', () => {
         layout: { 'line-join': 'round', 'line-cap': 'round' },
         paint: { 'line-color': '#e6d6a7', 'line-width': 2, 'line-dasharray': [2, 6], 'line-opacity': 0.9 }
       });
+
 
       // Add markers and labels
       markers.forEach((m, i) => {
@@ -252,21 +275,35 @@ map.on('load', () => {
       map.addControl(new mapboxgl.FullscreenControl(), 'top-right');
 
       // **Sidebar**
-      const sidebarList = document.getElementById('sidebar-list');
-      markers.forEach((m, i) => {
-        const li = document.createElement('li');
-       li.innerHTML = `${lines[i + 2].split(',')[0] || ''} - ${lines[i + 2].split(',')[1] || ''} - ${lines[i + 2].split(',')[2] || ''}`;
+   const sidebarList = document.getElementById('sidebar-list');
 
-        li.style.cursor = 'pointer';
-        li.addEventListener('click', () => {
-          map.flyTo({ center: m.coords, zoom: 8 });
-          new mapboxgl.Popup({ offset: 12, closeOnClick: true })
-            .setLngLat(m.coords)
-            .setHTML(m.description)
-            .addTo(map);
-        });
-        sidebarList.appendChild(li);
-      });
+function clean(str) {
+  if (!str) return '';
+  return String(str)
+    .trim()
+    .replace(/^"(.*)"$/, '$1')   // remove wrapping double quotes
+    .replace(/^'(.*)'$/, '$1')   // remove wrapping single quotes
+    .replace(/""/g, '"');        // unescape double double-quotes
+}
+
+markers.forEach((m, i) => {
+  const li = document.createElement('li');
+
+  li.textContent = `${clean(m.yearStart)} - ${clean(m.yearEnd)} - ${clean(m.title)}`;
+
+  li.style.cursor = 'pointer';
+  li.addEventListener('click', () => {
+    map.flyTo({ center: m.coords, zoom: 8 });
+    new mapboxgl.Popup({ offset: 12, closeOnClick: true })
+      .setLngLat(m.coords)
+      .setHTML(clean(m.description))
+      .addTo(map);
+  });
+
+  sidebarList.appendChild(li);
+});
+
+
 
     })
     .catch(err => console.error('CSV konnte nicht geladen werden:', err));
